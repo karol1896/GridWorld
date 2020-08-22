@@ -219,9 +219,7 @@ var _Tile = require("./Tile");
 
 var _Tile2 = _interopRequireDefault(_Tile);
 
-var _Panel = require("./Panel");
-
-var _Panel2 = _interopRequireDefault(_Panel);
+var _algorithm = require("./algorithm.js");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -234,44 +232,37 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 var nOfRows = 4;
 var nOfColumns = 5;
 var endStates = [14, 19];
-var obstacles = [[0, 2], [1, 2], [2, 2]];
+var obstacles = [false, false, true, false, false, false, false, true, false, false, false, false, true, false, false, false, false, false, false, false];
 var values = [-5.352, -4.385, 0, 1.882, 2.908, -4.384, -3.051, 0, 2.592, 3.928, -3.246, -1.858, 0, 3.336, 5.0, -1.25, -0.736, 0.264, 1.279, -2.0];
 //[-4.725, -3.569, 0, 1.5, 1.0, -3.618, -2.173, 0, 2.834, 0, -2.0, -0.907, 0, 3.941, 5.0, -0.858, 0.199, 1.199, 2.227, -2.0]
 
-var addState = function addState(v) {
+var addState = function addState(v, obstacles) {
     var arr = [];
-    var o = obstacles.map(function (v) {
-        return v[0] * nOfColumns + v[1];
-    });
     for (var i = 0; i < v.length; i++) {
-        var isObstacle = o.includes(i) ? true : false;
-        arr.push({ value: v[i], active: i != 0 ? false : true, obstacles: isObstacle });
+        arr.push({ value: v[i], active: i != 0 ? false : true, obstacles: obstacles[i] });
     }
     return arr;
 };
-var makePath = function makePath(values, endStates, obstacles) {
+var makePath = function makePath(values, endStates, obstacles, nOfColumns, nOfRows) {
     var curPos = 0;
     var path = [0];
     var k = 0;
-    var o = obstacles.map(function (v) {
-        return v[0] * nOfColumns + v[1];
-    });
     while (!endStates.includes(curPos) && k < nOfColumns * nOfRows) {
-        var maxVal = values[curPos];
+        var maxVal = -nOfColumns * nOfRows;
         var move = curPos;
-        if (curPos - nOfColumns >= 0 && maxVal < values[curPos - nOfColumns] && !o.includes(curPos - nOfColumns)) {
+        if (curPos - nOfColumns >= 0 && maxVal < values[curPos - nOfColumns] && !obstacles[curPos - nOfColumns]) {
             move = curPos - nOfColumns;
             maxVal = values[curPos - nOfColumns];
         }
-        if (curPos + nOfColumns < nOfRows * nOfColumns && maxVal < values[curPos + nOfColumns] && !o.includes(curPos + nOfColumns)) {
+        if (curPos + nOfColumns < nOfRows * nOfColumns && maxVal < values[curPos + nOfColumns] && !obstacles[curPos + nOfColumns]) {
             move = curPos + nOfColumns;
             maxVal = values[curPos + nOfColumns];
         }
-        if (curPos % nOfColumns - 1 >= 0 && maxVal < values[curPos - 1] && !o.includes(curPos - 1)) {
+        if (curPos % nOfColumns - 1 >= 0 && maxVal < values[curPos - 1] && !obstacles[curPos - 1]) {
             move = curPos - 1;
             maxVal = values[curPos - 1];
         }
-        if (curPos % nOfColumns + 1 < nOfColumns && maxVal < values[curPos + 1] && !o.includes(curPos + 1)) {
+        if (curPos % nOfColumns + 1 < nOfColumns && maxVal < values[curPos + 1] && !obstacles[curPos + 1]) {
             move = curPos + 1;
             maxVal = values[curPos + 1];
         }
@@ -293,17 +284,39 @@ var Board = function (_React$Component) {
         _this.state = {
             rows: nOfRows,
             columns: nOfColumns,
-            values: addState(values),
-            path: makePath(values, endStates, obstacles),
-            curPos: 0
+            obstacles: obstacles,
+            values: addState(values, obstacles, nOfColumns),
+            path: makePath(values, endStates, obstacles, nOfColumns, nOfRows),
+            curPos: 0,
+            endStates: endStates,
+            rounds: 500
         };
         _this.run = _this.run.bind(_this);
         _this.reset = _this.reset.bind(_this);
-        _this.setParameter = _this.setParameter.bind(_this);
+        _this.train = _this.train.bind(_this);
         return _this;
     }
 
     _createClass(Board, [{
+        key: "train",
+        value: function train() {
+            var _state = this.state,
+                rows = _state.rows,
+                columns = _state.columns,
+                endStates = _state.endStates,
+                obstacles = _state.obstacles;
+
+            var arr = (0, _algorithm.play)(this.state.rounds, obstacles, endStates[0], endStates[1], rows, columns, 0.3);
+            arr = arr.map(function (v) {
+                return v.value;
+            });
+            var path = makePath(arr, endStates, obstacles, columns, rows);
+            console.log(path, arr);
+            this.setState({ path: path });
+            arr = addState(arr, obstacles, columns);
+            this.setState({ values: arr });
+        }
+    }, {
         key: "nextStep",
         value: function nextStep() {
             var v = Object.assign([], this.state.values);
@@ -319,15 +332,43 @@ var Board = function (_React$Component) {
         key: "setParameter",
         value: function setParameter(value, name) {
             var obj = {};
-            obj[name] = Number(value);
-            this.setState(obj);
+            var rows = 0;
+            var columns = 0;
+            if (name === 'rows') {
+                rows = value;
+                columns = this.state.columns;
+                obj[name] = Number(value);
+                var arr = Array(columns * rows).fill(0);
+                var _obstacles = Array(columns * rows).fill(false);
+                this.setState({ obstacles: _obstacles });
+                arr = addState(arr, this.state.obstacles, columns);
+                obj["values"] = arr;
+                this.setState(obj);
+            } else if (name === 'colmuns') {
+                rows = this.state.rows;
+                columns = value;
+                obj[name] = Number(value);
+                var _arr = Array(columns * rows).fill(0);
+                var _obstacles2 = Array(columns * rows).fill(false);
+                this.setState({ obstacles: _obstacles2 });
+                _arr = addState(_arr, this.state.obstacles, columns);
+                obj["values"] = _arr;
+                this.setState(obj);
+            } else if (name === "end") {
+                var _arr2 = [Number(value), this.state.endStates[1]];
+                this.setState({ endStates: _arr2 });
+            } else if (name === "trap") {
+                var _arr3 = [this.state.endStates[0], Number(value)];
+                this.setState({ endStates: _arr3 });
+            } else {
+                this.setState({ rounds: Number(value) });
+            }
         }
     }, {
         key: "run",
         value: function run() {
             var _this2 = this;
 
-            console.log(this.state);
             this.path = setInterval(function () {
                 return _this2.nextStep();
             }, 1000);
@@ -345,6 +386,24 @@ var Board = function (_React$Component) {
             clearInterval(this.path);
         }
     }, {
+        key: "changeObstacle",
+        value: function changeObstacle(pos) {
+            if (this.state.obstacles[pos] === true) {
+                var v = Object.assign([], this.state.obstacles);
+                v[pos] = false;
+                this.setState({ obstacles: v });
+            } else {
+                var _v = Object.assign([], this.state.obstacles);
+                _v[pos] = true;
+                this.setState({ obstacles: _v });
+            }
+            var obj = {};
+            var arr = Array(this.state.columns * this.state.rows).fill(0);
+            arr = addState(arr, this.state.obstacles, this.state.columns);
+            obj["values"] = arr;
+            this.setState(obj);
+        }
+    }, {
         key: "render",
         value: function render() {
             var _this3 = this;
@@ -355,12 +414,51 @@ var Board = function (_React$Component) {
                 _react2.default.createElement(
                     "div",
                     { className: "panel" },
+                    _react2.default.createElement(
+                        "p",
+                        null,
+                        " Ustaw liczb\u0119 wierszy"
+                    ),
                     _react2.default.createElement("textarea", { value: this.state.rows, onChange: function onChange(e) {
                             return _this3.setParameter(e.target.value, "rows");
                         } }),
+                    _react2.default.createElement(
+                        "p",
+                        null,
+                        " Ustaw liczb\u0119 kolumn"
+                    ),
                     _react2.default.createElement("textarea", { value: this.state.columns, onChange: function onChange(e) {
                             return _this3.setParameter(e.target.value, "columns");
                         } }),
+                    _react2.default.createElement(
+                        "p",
+                        null,
+                        " Ustaw liczb\u0119 rund do treningu"
+                    ),
+                    _react2.default.createElement("textarea", { value: this.state.rounds, onChange: function onChange(e) {
+                            return _this3.setParameter(e.target.value, "rounds");
+                        } }),
+                    _react2.default.createElement(
+                        "p",
+                        null,
+                        " Ustaw koniec drogi"
+                    ),
+                    _react2.default.createElement("textarea", { value: this.state.endStates[0], onChange: function onChange(e) {
+                            return _this3.setParameter(e.target.value, "end");
+                        } }),
+                    _react2.default.createElement(
+                        "p",
+                        null,
+                        " Ustaw pu\u0142apk\u0119"
+                    ),
+                    _react2.default.createElement("textarea", { value: this.state.endStates[1], onChange: function onChange(e) {
+                            return _this3.setParameter(e.target.value, "trap");
+                        } }),
+                    _react2.default.createElement(
+                        "button",
+                        { onClick: this.train },
+                        "Trenuj"
+                    ),
                     _react2.default.createElement(
                         "button",
                         { onClick: this.run },
@@ -376,13 +474,19 @@ var Board = function (_React$Component) {
                     "div",
                     { className: "container" },
                     this.state.values.map(function (v, i) {
-                        return _react2.default.createElement(_Tile2.default, { value: v, index: i, endStates: endStates });
+                        return _react2.default.createElement(_Tile2.default, {
+                            changeObstacle: _this3.changeObstacle.bind(_this3),
+                            obstacle: _this3.state.obstacles[i],
+                            value: v,
+                            index: i,
+                            endStates: _this3.state.endStates
+                        });
                     })
                 ),
                 _react2.default.createElement(
                     "style",
                     null,
-                    "\n                    .app{\n                        display: flex;\n                    }\n                    .panel{\n                        width: 34vw;\n                        height: 100vh;\n                    }\n                    .container{\n                        display: flex;\n                        height: 98vh;\n                        width: 66vw;\n                        flex-wrap: wrap;\n                        flex-direction: row;\n                    }\n                    .tile{\n                        width: calc(" + 100 / nOfColumns + "% - 2px);\n                        height: calc(" + 100 / nOfRows + "% - 2px);\n                        text-align: center;\n                        font-size: 50px;\n                        border: solid black 1px;\n                    }\n                "
+                    "\n                    .app{\n                        display: flex;\n                    }\n                    .panel{\n                        width: 34vw;\n                        height: 100vh;\n                    }\n                    .container{\n                        display: flex;\n                        height: 98vh;\n                        width: 66vw;\n                        flex-wrap: wrap;\n                        flex-direction: row;\n                    }\n                    .tile{\n                        width: calc(" + 100 / this.state.columns + "% - 2px);\n                        height: calc(" + 100 / this.state.rows + "% - 2px);\n                        text-align: center;\n                        font-size: 50px;\n                        border: solid black 1px;\n                    }\n                "
                 )
             );
         }
@@ -392,60 +496,7 @@ var Board = function (_React$Component) {
 }(_react2.default.Component);
 
 exports.default = Board;
-},{"./Panel":4,"./Tile":5,"react":20}],4:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-var _react = require("react");
-
-var _react2 = _interopRequireDefault(_react);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-var Panel = function (_React$Component) {
-    _inherits(Panel, _React$Component);
-
-    function Panel() {
-        _classCallCheck(this, Panel);
-
-        return _possibleConstructorReturn(this, (Panel.__proto__ || Object.getPrototypeOf(Panel)).apply(this, arguments));
-    }
-
-    _createClass(Panel, [{
-        key: "render",
-        value: function render() {
-            var _this2 = this;
-
-            return _react2.default.createElement(
-                "div",
-                { className: "panel" },
-                _react2.default.createElement(
-                    "button",
-                    { onClick: function onClick() {
-                            return _this2.props.start(_this2.props.path, _this2.props.values);
-                        } },
-                    "Start"
-                )
-            );
-        }
-    }]);
-
-    return Panel;
-}(_react2.default.Component);
-
-exports.default = Panel;
-},{"react":20}],5:[function(require,module,exports){
+},{"./Tile":4,"./algorithm.js":5,"react":20}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -478,14 +529,17 @@ var Tile = function (_React$Component) {
     _createClass(Tile, [{
         key: "render",
         value: function render() {
+            var _this2 = this;
+
             return _react2.default.createElement(
                 "div",
-                { id: "tile" + this.props.index, className: "tile" },
-                this.props.index === 0 ? "Start" : this.props.endStates.includes(this.props.index) ? this.props.value.value : "",
+                { id: "tile" + this.props.index, onClick: function onClick() {
+                        return _this2.props.changeObstacle(_this2.props.index);
+                    }, className: "tile" },
                 _react2.default.createElement(
                     "style",
                     null,
-                    "\n                    #tile" + this.props.index + "{\n                        background: " + (this.props.value.obstacles ? "black" : this.props.value.active ? "blue" : "white") + ";  \n                    }\n                "
+                    "\n                    #tile" + this.props.index + "{\n                        background: " + (this.props.obstacle ? "black" : this.props.value.active ? "blue" : this.props.endStates[0] === this.props.index ? "green" : this.props.endStates[1] === this.props.index ? "red" : "white") + ";  \n                    }\n                "
                 )
             );
         }
@@ -495,7 +549,159 @@ var Tile = function (_React$Component) {
 }(_react2.default.Component);
 
 exports.default = Tile;
-},{"react":20}],6:[function(require,module,exports){
+},{"react":20}],5:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+function giveReward(pos, winPos, trap) {
+    if (pos === winPos) {
+        return 5;
+    } else if (pos === trap) {
+        return -2;
+    } else {
+        return -1;
+    }
+}
+
+function isEndFunc(pos, winPos, trap) {
+    if (pos === winPos || pos === trap) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function chooseAction(pos, values, rows, columns, obstacles, expRate) {
+    var max_reward = 0;
+    var action = "";
+    var actions = ["up", "down", "left", "right"];
+    if (Math.random() <= expRate) {
+        action = actions[Math.floor(Math.random() * 4)];
+    } else {
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = actions[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var a = _step.value;
+
+                var next_reward = values[nextPosition(pos, a, rows, columns, obstacles)]["value"];
+                if (next_reward >= max_reward) {
+                    action = a;
+                    max_reward = next_reward;
+                }
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
+    }
+    return action;
+}
+
+function nextPosition(pos, action, rows, columns, obstacles) {
+    var col = pos % columns;
+    var row = Math.floor(pos / columns);
+    if (action === "up") {
+        row--;
+    } else if (action === "down") {
+        row++;
+    } else if (action === "left") {
+        col--;
+    } else {
+        col++;
+    }
+    if (row >= 0 && row < rows) {
+        if (col >= 0 && col < columns) {
+            if (!obstacles[row * columns + col]) {
+                return row * columns + col;
+            }
+        }
+    }
+    return pos;
+}
+
+function play(rounds, obstacles, winPos, trap, rows, columns, expRate) {
+    var pos = 0;
+    var path = [0];
+    var uniqueEl = [];
+    var values = new Array(obstacles.length).fill().map(function (u) {
+        return { "value": 0, "visits": 0 };
+    });
+    var i = 0;
+    while (i < rounds) {
+        if (isEndFunc(pos, winPos, trap)) {
+            var reward = 0;
+            var _iteratorNormalCompletion2 = true;
+            var _didIteratorError2 = false;
+            var _iteratorError2 = undefined;
+
+            try {
+                var _loop = function _loop() {
+                    var s = _step2.value;
+
+                    if (!uniqueEl.some(function (v) {
+                        return v === s;
+                    })) {
+                        reward += giveReward(s, winPos, trap);
+                        values[s]["value"] = (values[s]["value"] * values[s]["visits"] + reward) / (values[s]["visits"] + 1);
+                        values[s]["visits"] += 1;
+                        uniqueEl.push(s);
+                    }
+                };
+
+                for (var _iterator2 = path.reverse()[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+                    _loop();
+                }
+            } catch (err) {
+                _didIteratorError2 = true;
+                _iteratorError2 = err;
+            } finally {
+                try {
+                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
+                        _iterator2.return();
+                    }
+                } finally {
+                    if (_didIteratorError2) {
+                        throw _iteratorError2;
+                    }
+                }
+            }
+
+            path = [0];
+            uniqueEl = [];
+            pos = 0;
+            i++;
+        } else {
+            var action = chooseAction(pos, values, rows, columns, obstacles, expRate);
+            var nextState = nextPosition(pos, action, rows, columns, obstacles);
+            if (pos != nextState) {
+                path.push(nextState);
+            }
+            pos = path[path.length - 1];
+        }
+    }
+    return values;
+}
+
+exports.play = play;
+
+
+console.log(play(100, [false, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false], 15, 19, 4, 5, 0.3));
+},{}],6:[function(require,module,exports){
 /*
 object-assign
 (c) Sindre Sorhus
